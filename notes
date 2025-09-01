@@ -16,3 +16,26 @@ public void processFile(byte[] fileBytes) throws Exception {
         }
     }
 }
+
+
+
+
+public void processFile(byte[] fileBytes) throws Exception {
+    try (ByteArrayInputStream bais = new ByteArrayInputStream(fileBytes)) {
+        GenbankReader<DNASequence, NucleotideCompound> reader =
+            new GenbankReader<>(
+                new InputStreamReader(bais),
+                new org.biojava.nbio.core.sequence.io.DNASequenceCreator(
+                    AmbiguityDNACompoundSet.getDNACompoundSet()
+                )
+            );
+
+        Map<String, DNASequence> map = reader.read();
+
+        Iterator<DNASequence> sequences = map.values().iterator();
+        while (sequences.hasNext()) {
+            DNASequence seq = sequences.next();
+            process(seq);
+        }
+    }
+}
