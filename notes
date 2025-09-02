@@ -39,3 +39,41 @@ public void processFile(byte[] fileBytes) throws Exception {
         }
     }
 }
+
+
+
+import org.biojava.nbio.core.sequence.DNASequence;
+import org.biojava.nbio.core.sequence.compound.NucleotideCompound;
+import org.biojava.nbio.core.sequence.compound.AmbiguityDNACompoundSet;
+import org.biojava.nbio.core.sequence.io.GenbankReader;
+import org.biojava.nbio.core.sequence.io.template.SequenceHeaderParserInterface;
+import org.biojava.nbio.core.sequence.io.template.SequenceCreatorInterface;
+import org.biojava.nbio.core.sequence.io.GenericGenbankHeaderParser;
+import org.biojava.nbio.core.sequence.io.DNASequenceCreator;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.Map;
+
+public void processFile(byte[] fileBytes) throws Exception {
+    try (ByteArrayInputStream bais = new ByteArrayInputStream(fileBytes)) {
+        SequenceHeaderParserInterface<DNASequence, NucleotideCompound> headerParser =
+            new GenericGenbankHeaderParser<>();
+
+        SequenceCreatorInterface<DNASequence> sequenceCreator =
+            new DNASequenceCreator(AmbiguityDNACompoundSet.getDNACompoundSet());
+
+        GenbankReader<DNASequence, NucleotideCompound> reader =
+            new GenbankReader<>(
+                (InputStream) bais,
+                headerParser,
+                sequenceCreator
+            );
+
+        Map<String, DNASequence> sequences = reader.process();
+
+        for (DNASequence seq : sequences.values()) {
+            process(seq); // Your downstream logic
+        }
+    }
+}
