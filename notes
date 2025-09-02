@@ -77,3 +77,41 @@ public void processFile(byte[] fileBytes) throws Exception {
         }
     }
 }
+
+
+import org.biojava.nbio.core.sequence.DNASequence;
+import org.biojava.nbio.core.sequence.compound.AmbiguityDNACompoundSet;
+import org.biojava.nbio.core.sequence.compound.NucleotideCompound;
+import org.biojava.nbio.core.sequence.io.DNASequenceCreator;
+import org.biojava.nbio.core.sequence.io.GenericGenbankHeaderParser;
+import org.biojava.nbio.core.sequence.io.GenbankReader;
+import org.biojava.nbio.core.sequence.io.template.SequenceCreatorInterface;
+import org.biojava.nbio.core.sequence.io.template.SequenceHeaderParserInterface;
+
+import java.io.ByteArrayInputStream;
+import java.util.Map;
+
+public void processFile(byte[] fileBytes) throws Exception {
+    try (ByteArrayInputStream bais = new ByteArrayInputStream(fileBytes)) {
+
+        SequenceHeaderParserInterface<DNASequence, NucleotideCompound> headerParser =
+            new GenericGenbankHeaderParser<DNASequence, NucleotideCompound>();
+
+        SequenceCreatorInterface<NucleotideCompound> sequenceCreator =
+            new DNASequenceCreator(AmbiguityDNACompoundSet.getDNACompoundSet());
+
+        GenbankReader<DNASequence, NucleotideCompound> reader =
+            new GenbankReader<DNASequence, NucleotideCompound>(
+                bais,
+                headerParser,
+                sequenceCreator
+            );
+
+        Map<String, DNASequence> map = reader.process(); // or reader.read() in some versions
+
+        for (DNASequence seq : map.values()) {
+            process(seq);
+        }
+    }
+}
+
