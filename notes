@@ -115,3 +115,80 @@ public void processFile(byte[] fileBytes) throws Exception {
     }
 }
 
+
+
+import org.biojava.nbio.core.sequence.DNASequence;
+import org.biojava.nbio.core.sequence.compound.AmbiguityDNACompoundSet;
+import org.biojava.nbio.core.sequence.compound.NucleotideCompound;
+import org.biojava.nbio.core.sequence.io.DNASequenceCreator;
+import org.biojava.nbio.core.sequence.io.GenericGenbankHeaderParser;
+import org.biojava.nbio.core.sequence.io.GenbankReader;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStreamReader;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.*;
+
+public class GenbankProcessor {
+
+    private final ExecutorService executor;
+
+    public GenbankProcessor(int threads) {
+        this.executor = Executors.newFixedThreadPool(threads);
+    }
+
+    public void shutdown() {
+        executor.shutdown();
+    }
+
+    public Future<Void> submitFile(byte[] fileBytes) {
+        return executor.submit(() -> {
+            processFile(fileBytes);
+            return null;
+        });
+    }
+
+    private void processFile(byte[] fileBytes) throws Exception {
+        try (ByteArrayInputStream bais = new ByteArrayInputStream(fileBytes);
+             InputStreamReader isr = new InputStreamReader(bais)) {
+
+            GenbankReader<DNASequence, NucleotideCompound> reader =
+                new GenbankReader<>(
+                    isr,
+                    new GenericGenbankHeaderParser<>(),
+                    new DNASequenceCreator(AmbiguityDNACompoundSet.getDNACompoundSet())
+                );
+
+            Map<String, DNASequence> sequences = reader.process();
+
+            for (DNASequence seq : sequences.values()) {
+                process(seq);  // your downstream logic
+            }
+        }
+    }
+
+    private void process(DNASequence seq) {
+        // TODO: replace with your real logic
+        System.out.println("Processed sequence: " + seq.getAccession().getID());
+    }
+
+    // Example usage
+    public static void main(String[] args) throws Exception {
+        GenbankProcessor processor = new GenbankProcessor(8); // 8 threads
+
+        // Example: submit multiple files
+        List<byte[]> files = List.of(
+            /* load file1 bytes */,
+            /* load file2 bytes */,
+            /* etc. */
+        );
+
+        for (byte[] fileBytes : files) {
+            processor.submitFile(fileBytes);
+        }
+
+        processor.shutdown();
+    }
+}
+
