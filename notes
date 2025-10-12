@@ -272,4 +272,30 @@ async function uploadFile(file) {
     }
 }
 
+const { FileChunk } = require('./generated_pb');
+const { FileUploadServiceClient } = require('./generated_grpc_web_pb');
+
+const client = new FileUploadServiceClient('http://localhost:8080');
+
+async function uploadFile(file) {
+  const stream = client.uploadFile((err, response) => {
+    if (err) console.error(err);
+    else console.log(response.getMessage());
+  });
+
+  const chunkSize = 64 * 1024; // 64 KB
+  let offset = 0;
+
+  while (offset < file.size) {
+    const chunk = file.slice(offset, offset + chunkSize);
+    const arrayBuffer = await chunk.arrayBuffer();
+    const message = new FileChunk();
+    message.setFileName(file.name);
+    message.setData(new Uint8Array(arrayBuffer));
+    stream.write(message);
+    offset += chunkSize;
+  }
+
+  stream.end();
+}
 
