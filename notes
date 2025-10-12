@@ -249,6 +249,26 @@ public class FileUploadServiceImpl extends FileUploadServiceGrpc.FileUploadServi
                 }
             }
         };
+
+
+
+import { FileUploadServiceClient } from './generated/FileUploadServiceClientPb';
+import { FileUploadRequest } from './generated/fileupload_pb';
+
+const client = new FileUploadServiceClient('https://your-server');
+
+async function uploadFile(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const req = new FileUploadRequest();
+  req.setFileName(file.name);
+  req.setFileData(new Uint8Array(arrayBuffer));
+
+  client.uploadFile(req, {}, (err, response) => {
+    if (err) console.error('Upload error:', err);
+    else console.log(response.getMessage());
+  });
+}
+
     }
 }
 
