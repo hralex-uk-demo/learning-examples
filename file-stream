@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package fileupload;
+
+service FileUploadService {
+  rpc UploadChunk(FileChunk) returns (UploadAck);
+  rpc CompleteUpload(UploadComplete) returns (UploadStatus);
+}
+
+message FileChunk {
+  string file_id = 1;
+  string file_name = 2;
+  int32 sequence = 3; // chunk index
+  bytes data = 4;
+}
+
+message UploadAck {
+  bool received = 1;
+  int32 sequence = 2;
+}
+
+message UploadComplete {
+  string file_id = 1;
+  string file_name = 2;
+}
+
+message UploadStatus {
+  bool success = 1;
+  string message = 2;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import io.grpc.stub.StreamObserver;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+public class FileUploadServiceImpl extends FileUploadServiceGrpc.FileUploadServiceImplBase {
+
+    // Map to store partial output streams by fileId
+    private Map<String, FileOutputStream> fileStreams = new HashMap<>();
+
+    @Override
+    public void uploadChunk(FileChunk request, StreamObserver<UploadAck> responseObserver) {
+        String fileId = request.getFileId();
+        String fileName = request.getFileName();
+        int sequence = request.getSequence();
+
+        try {
+            FileOutputStream out;
+            if (!fileStreams.containsKey(fileId)) {
+                out = new FileOutputStream("/tmp/" + fileName);
+                fileStreams.put(fileId, out);
+            } else {
+                out = fileStreams.get(fileId);
+            }
+
+            request.getData().writeTo(out);
+
+            UploadAck ack = UploadAck.newBuilder()
+                    .setReceived(true)
+                    .setSequence(sequence)
+                    .build();
+
+            responseObserver.onNext(ack);
+            responseObserver.onCompleted();
+
+        } catch (IOException e) {
+            responseObserver.onError(e);
+        }
+    }
+
+    @Override
+    public void completeUpload(UploadComplete request, StreamObserver<UploadStatus> responseObserver) {
+        String fileId = request.getFileId();
+        String fileName = request.getFileName();
+
+        try {
+            FileOutputStream out = fileStreams.get(fileId);
+            if (out != null) out.close();
+            fileStreams.remove(fileId);
+
+            UploadStatus status = UploadStatus.newBuilder()
+                    .setSuccess(true)
+                    .setMessage("File uploaded successfully: " + fileName)
+                    .build();
+            responseObserver.onNext(status);
+            responseObserver.onCompleted();
+
+        } catch (IOException e) {
+            responseObserver.onError(e);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+import { FileUploadServiceClient } from './generated_grpc_web_pb';
+import { FileChunk, UploadComplete } from './generated_pb';
+
+const client = new FileUploadServiceClient('http://localhost:8080');
+
+async function uploadFile(file) {
+  const chunkSize = 64 * 1024; // 64 KB
+  let offset = 0;
+  let sequence = 0;
+  const fileId = crypto.randomUUID(); // unique ID per file
+
+  while (offset < file.size) {
+    const chunkData = await file.slice(offset, offset + chunkSize).arrayBuffer();
+    const chunkMsg = new FileChunk();
+    chunkMsg.setFileId(fileId);
+    chunkMsg.setFileName(file.name);
+    chunkMsg.setSequence(sequence++);
+    chunkMsg.setData(new Uint8Array(chunkData));
+
+    await new Promise((resolve, reject) => {
+      client.uploadChunk(chunkMsg, {}, (err, response) => {
+        if (err) reject(err);
+        else resolve(response);
+      });
+    });
+
+    offset += chunkSize;
+  }
+
+  // Notify server upload is complete
+  const completeMsg = new UploadComplete();
+  completeMsg.setFileId(fileId);
+  completeMsg.setFileName(file.name);
+
+  client.completeUpload(completeMsg, {}, (err, response) => {
+    if (err) console.error("Upload failed:", err);
+    else console.log("✅", response.getMessage());
+  });
+}
+
+// Attach to input
+document.querySelector("#fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (file) await uploadFile(file);
+});
