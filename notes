@@ -192,3 +192,64 @@ public class GenbankProcessor {
     }
 }
 
+
+
+import io.grpc.stub.StreamObserver;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.io.IOException;
+
+public class FileUploadServiceImpl extends FileUploadServiceGrpc.FileUploadServiceImplBase {
+
+    @Override
+    public StreamObserver<FileChunk> uploadFile(StreamObserver<UploadStatus> responseObserver) {
+        return new StreamObserver<FileChunk>() {
+
+            OutputStream outputStream;
+            String fileName;
+
+            @Override
+            public void onNext(FileChunk chunk) {
+                try {
+                    if (outputStream == null) {
+                        fileName = chunk.getFileName();
+                        outputStream = new FileOutputStream("/tmp/" + fileName);
+                    }
+
+                    chunk.getData().writeTo(outputStream); // Write chunk data
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                t.printStackTrace();
+                closeStream();
+            }
+
+            @Override
+            public void onCompleted() {
+                closeStream();
+                UploadStatus status = UploadStatus.newBuilder()
+                        .setSuccess(true)
+                        .setMessage("File uploaded successfully: " + fileName)
+                        .build();
+                responseObserver.onNext(status);
+                responseObserver.onCompleted();
+            }
+
+            private void closeStream() {
+                if (outputStream != null) {
+                    try {
+                        outputStream.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+    }
+}
+
+
