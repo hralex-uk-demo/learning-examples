@@ -163,3 +163,106 @@ document.querySelector("#fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (file) await uploadFile(file);
 });
+
+
+
+
+
+
+
+import io.grpc.stub.StreamObserver;
+import java.io.*;
+import java.nio.file.*;
+import java.sql.*;
+import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
+
+public class FileUploadServiceImpl extends FileUploadServiceGrpc.FileUploadServiceImplBase {
+
+    private final DataSource dataSource;
+    private final Map<String, FileOutputStream> fileStreams = new HashMap<>();
+    private final Map<String, String> filePaths = new HashMap<>();
+
+    public FileUploadServiceImpl(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
+
+    @Override
+    public void uploadChunk(FileChunk request, StreamObserver<UploadAck> responseObserver) {
+        String fileId = request.getFileId();
+        String fileName = request.getFileName();
+        int sequence = request.getSequence();
+
+        try {
+            FileOutputStream out;
+            if (!fileStreams.containsKey(fileId)) {
+                // Create temp file for each upload
+                String tempPath = "/tmp/" + fileId + "_" + fileName;
+                out = new FileOutputStream(tempPath);
+                fileStreams.put(fileId, out);
+                filePaths.put(fileId, tempPath);
+            } else {
+                out = fileStreams.get(fileId);
+            }
+
+            // Write chunk bytes to file
+            request.getData().writeTo(out);
+
+            UploadAck ack = UploadAck.newBuilder()
+                    .setReceived(true)
+                    .setSequence(sequence)
+                    .build();
+
+            responseObserver.onNext(ack);
+            responseObserver.onCompleted();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            responseObserver.onError(e);
+        }
+    }
+
+    @Override
+    public void completeUpload(UploadComplete request, StreamObserver<UploadStatus> responseObserver) {
+        String fileId = request.getFileId();
+        String fileName = request.getFileName();
+
+        try {
+            // Close the file stream
+            FileOutputStream out = fileStreams.get(fileId);
+            if (out != null) out.close();
+            fileStreams.remove(fileId);
+
+            // Read full file into memory (for DB insert)
+            String tempPath = filePaths.get(fileId);
+            byte[] fileData = Files.readAllBytes(Paths.get(tempPath));
+
+            // Store file in DB
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = "INSERT INTO uploaded_files (file_id, file_name, data) VALUES (?, ?, ?)";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, fileId);
+                    stmt.setString(2, fileName);
+                    stmt.setBytes(3, fileData);
+                    stmt.executeUpdate();
+                }
+            }
+
+            // Delete temp file after successful DB write
+            Files.deleteIfExists(Paths.get(tempPath));
+            filePaths.remove(fileId);
+
+            UploadStatus status = UploadStatus.newBuilder()
+                    .setSuccess(true)
+                    .setMessage("File successfully saved to database: " + fileName)
+                    .build();
+            responseObserver.onNext(status);
+            responseObserver.onCompleted();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            responseObserver.onError(e);
+        }
+    }
+}
